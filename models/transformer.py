@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Transformer 对比模型。"""
+"""Transformer 异常检测模型实现。"""
 
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
 
+from layers.Transformer_EncDec import Encoder, EncoderLayer
+from layers.SelfAttention_Family import FullAttention, AttentionLayer
+from layers.Embed import DataEmbedding
+
 
 class TransformerModel(nn.Module):
-    """基于 Transformer 的时序重构模型。"""
+    """多层 Transformer 编码器用于序列重构。"""
 
     def __init__(
         self,
@@ -24,34 +28,44 @@ class TransformerModel(nn.Module):
         self.input_c = input_c
         self.window_length = window_length
 
-        self.input_proj = nn.Linear(input_c, d_model)
-        self.pos_embedding = nn.Parameter(torch.zeros(1, window_length, d_model))
+        self.embedding = DataEmbedding(input_c, d_model, dropout=dropout)
 
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=n_heads,
-            dim_feedforward=d_ff,
-            dropout=dropout,
-            batch_first=True,
-            activation="gelu",
-        )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        attn_layers = [
+            EncoderLayer(
+                AttentionLayer(
+                    FullAttention(
+                        mask_flag=False,
+                        factor=1,
+                        attention_dropout=dropout,
+                        output_attention=False,
+                    ),
+                    d_model,
+                    n_heads,
+                ),
+                d_model,
+                d_ff,
+                dropout=dropout,
+                activation="gelu",
+            )
+            for _ in range(num_layers)
+        ]
+
+        self.encoder = Encoder(attn_layers, norm_layer=nn.LayerNorm(d_model))
 
         self.reconstructor = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(d_ff, input_c),
         )
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        embedding = self.input_proj(x)
-        embedding = embedding + self.pos_embedding
-        encoded = self.encoder(embedding)
-        recon = self.reconstructor(encoded)
-
+        emb = self.embedding(x)
+        enc_out, _ = self.encoder(emb)
+        recon = self.reconstructor(enc_out)
         return {
             "recon": recon,
-            "encoded": encoded,
+            "encoded": enc_out,
         }
 
     def loss_function(self, x: torch.Tensor, outputs: dict[str, torch.Tensor], **kwargs) -> dict[str, torch.Tensor]:
