@@ -16,6 +16,7 @@ from tqdm.auto import tqdm
 
 from dataset import SMDDataset, SMDWindowConfig, load_smd_labels
 from models import OmniAnomalyModel
+from utils import search_best_f1, adjust_predictions
 
 
 @dataclass
@@ -193,14 +194,17 @@ class OmniAnomalyTrainer:
                 recon_errors.extend(error.cpu().numpy())
 
         recon_errors = np.array(recon_errors)
-        threshold = np.percentile(recon_errors, 100 - self.config.anomaly_ratio)
-
         test_labels = self.test_labels[-len(recon_errors) :]
-        preds = (recon_errors > threshold).astype(int)
 
-        tp = np.sum((preds == 1) & (test_labels == 1))
-        fp = np.sum((preds == 1) & (test_labels == 0))
-        fn = np.sum((preds == 0) & (test_labels == 1))
+        best_f1, best_precision, best_recall, threshold = search_best_f1(
+            recon_errors, test_labels, num_steps=2000
+        )
+        preds = (recon_errors >= threshold).astype(int)
+        adjusted_preds = adjust_predictions(test_labels, preds)
+
+        tp = np.sum((adjusted_preds == 1) & (test_labels == 1))
+        fp = np.sum((adjusted_preds == 1) & (test_labels == 0))
+        fn = np.sum((adjusted_preds == 0) & (test_labels == 1))
 
         precision = tp / (tp + fp + 1e-8)
         recall = tp / (tp + fn + 1e-8)
@@ -211,11 +215,19 @@ class OmniAnomalyTrainer:
             "recall": float(recall),
             "f1": float(f1),
             "threshold": float(threshold),
+            "best_f1": float(best_f1),
+            "best_precision": float(best_precision),
+            "best_recall": float(best_recall),
         }
 
         result_path = self.machine_log_root / f"{self.run_id}_metrics.json"
         with result_path.open("w", encoding="utf-8") as f:
             json.dump(metrics, f, ensure_ascii=False, indent=2)
+
+        pred_path = self.run_result_dir / "predictions.npy"
+        np.save(pred_path, adjusted_preds)
+        score_path = self.run_result_dir / "scores.npy"
+        np.save(score_path, recon_errors)
 
         return metrics
 
