@@ -160,7 +160,8 @@ class SMDDataset(Dataset):
             raise RuntimeError("test_label 数据集不支持通过 Dataset 迭代")
 
         window = self.windows[idx]
-        return window, None
+        dummy_label = torch.zeros(1, dtype=torch.float32)
+        return window, dummy_label
 
 
 def load_smd_labels(machine_id: str) -> np.ndarray:
