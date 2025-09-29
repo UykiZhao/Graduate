@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from dataset import SMDDataset, SMDWindowConfig, load_smd_labels
-from models import OmniAnomalyModel
+from models import OmniAnomalyModel, TransformerModel
 from utils import search_best_f1, adjust_predictions
 
 
@@ -45,6 +45,10 @@ class TrainingConfig:
     stride: int = 1
     notes: Optional[str] = None
     extra_params: Dict[str, float] = field(default_factory=dict)
+    model_name: str = "OmniAnomaly"
+    n_heads: int = 4
+    num_layers: int = 2
+    dropout: float = 0.1
 
 
 class OmniAnomalyTrainer:
@@ -65,15 +69,28 @@ class OmniAnomalyTrainer:
         self.test_dataset = SMDDataset(dataset_cfg, subset="test")
         self.test_labels = load_smd_labels(config.machine_id)
 
-        self.model = OmniAnomalyModel(
-            input_c=self.train_dataset.feature_dim,
-            window_length=config.window_length,
-            d_model=config.d_model,
-            latent_dim=config.latent_dim,
-            d_ff=config.d_ff,
-        ).to(self.device)
+        self.model = self._build_model()
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
+    def _build_model(self) -> torch.nn.Module:
+        if self.config.model_name == "Transformer":
+            return TransformerModel(
+                input_c=self.train_dataset.feature_dim,
+                window_length=self.config.window_length,
+                d_model=self.config.d_model,
+                n_heads=self.config.n_heads,
+                d_ff=self.config.d_ff,
+                num_layers=self.config.num_layers,
+                dropout=self.config.dropout,
+            ).to(self.device)
+
+        return OmniAnomalyModel(
+            input_c=self.train_dataset.feature_dim,
+            window_length=self.config.window_length,
+            d_model=self.config.d_model,
+            latent_dim=self.config.latent_dim,
+            d_ff=self.config.d_ff,
+        ).to(self.device)
 
         self.train_loader = DataLoader(
             self.train_dataset,

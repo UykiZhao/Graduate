@@ -23,6 +23,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--d_model", type=int, default=128)
     parser.add_argument("--d_ff", type=int, default=256)
     parser.add_argument("--latent_dim", type=int, default=64)
+    parser.add_argument("--n_heads", type=int, default=4)
+    parser.add_argument("--num_layers", type=int, default=2)
+    parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--max_epoch", type=int, default=20)
@@ -74,6 +77,10 @@ def main() -> None:
         pretrained_epoch=args.pretrained_epoch,
         notes=args.notes,
         extra_params=extra_params,
+        model_name=args.model,
+        n_heads=args.n_heads,
+        num_layers=args.num_layers,
+        dropout=args.dropout,
     )
 
     trainer = OmniAnomalyTrainer(config)

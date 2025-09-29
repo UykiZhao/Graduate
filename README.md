@@ -33,6 +33,8 @@ python main.py --dataset machine-1-1 --normalize --max_epoch 1
 
 ## 训练示例
 
+### OmniAnomaly
+
 ```bash
 python main.py \
   --model OmniAnomaly \
@@ -46,6 +48,24 @@ python main.py \
   --max_epoch 20 \
   --beta_kl 1.0 \
   --anomaly_ratio 0.5 \
+  --normalize
+```
+
+### Transformer 对比模型
+
+```bash
+python main.py \
+  --model Transformer \
+  --dataset machine-1-1 \
+  --window_length 100 \
+  --d_model 128 \
+  --d_ff 256 \
+  --n_heads 4 \
+  --num_layers 3 \
+  --dropout 0.1 \
+  --batch_size 256 \
+  --learning_rate 1e-3 \
+  --max_epoch 20 \
   --normalize
 ```
 
