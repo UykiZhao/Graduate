@@ -8,7 +8,7 @@ import torch.nn as nn
 
 
 class TransformerModel(nn.Module):
-    """简单的 Transformer 编码解码架构。"""
+    """基于 Transformer 的时序重构模型。"""
 
     def __init__(
         self,
@@ -56,5 +56,6 @@ class TransformerModel(nn.Module):
     def loss_function(self, x: torch.Tensor, outputs: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         recon = outputs["recon"]
         recon_loss = torch.mean(torch.sum((recon - x[:, -1, :]) ** 2, dim=-1))
-        return {"loss": recon_loss, "recon_loss": recon_loss, "kl_loss": torch.tensor(0.0, device=x.device)}
+        zero = torch.tensor(0.0, device=x.device)
+        return {"loss": recon_loss, "recon_loss": recon_loss, "kl_loss": zero}
 

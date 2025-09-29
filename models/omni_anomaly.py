@@ -12,7 +12,7 @@ from layers import GRUEncoder, GaussianDiagonal, ReparameterizedNormal
 
 
 class OmniAnomalyModel(nn.Module):
-    """OmniAnomaly 模型核心实现。"""
+    """基于随机潜变量的重构模型。"""
 
     def __init__(
         self,

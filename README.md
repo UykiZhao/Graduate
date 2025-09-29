@@ -1,12 +1,16 @@
-# OmniAnomaly Pipeline
+# Multivariate Anomaly Pipeline
 
 简体中文 | [English](#english-version)
 
 ## 项目简介
 
-本仓库基于 KDD 2019 论文 **OmniAnomaly**，提供面向 SMD（Server Machine Dataset）数据集的统一异常检测训练管线，实现了：
+本仓库基于 KDD 2019 论文 **OmniAnomaly** 的思想做迁移，并扩展为可插拔的通用异常检测训练管线，目前内置模型：
+- 概率重构模型（`OmniAnomalyModel`）
+- Transformer 重构模型（`TransformerModel`）
+
+主要特性：
 - TensorFlow 版本全面迁移至最新 PyTorch
-- 统一的模型入口 `main.py` 与 `dataset.py`
+- 统一的入口 `main.py` 与 `dataset.py`
 - 训练过程实时可视化（tqdm）以及 Precision / Recall / F1 评估
 - 按运行编号归档的 `checkpoints/`、`results/` 与 `logs/`
 - CUDA、MPS、CPU 多硬件兼容
@@ -33,7 +37,7 @@ python main.py --dataset machine-1-1 --normalize --max_epoch 1
 
 ## 训练示例
 
-### OmniAnomaly
+### 概率重构模型（OmniAnomalyModel）
 
 ```bash
 python main.py \
@@ -51,7 +55,7 @@ python main.py \
   --normalize
 ```
 
-### Transformer 对比模型
+### Transformer 模型
 
 ```bash
 python main.py \
@@ -69,9 +73,9 @@ python main.py \
   --normalize
 ```
 
-训练日志将显示在终端，并同时写入 `logs/<machine_id>/<run_id>_metrics.json`。模型与指标存放于：
-- `checkpoints/<machine_id>/<run_id>/`
-- `results/<machine_id>/<run_id>/summary.json`
+训练日志将显示在终端，并同时写入 `logs/<machine_id>/<模型名称>/<run_id>_metrics.json`。模型与指标存放于：
+- `checkpoints/<模型名称>.pt`
+- `results/<machine_id>/<模型名称>/<run_id>/summary.json`
 
 ## 测试/评估
 
@@ -85,7 +89,9 @@ python main.py --mode test --pretrained_run 20250101-120000 --dataset machine-1-
 
 ## 快速脚本
 
-`scripts/omni_anomaly_smd.sh` 提供快速运行示例，可按需调整参数。
+`scripts/` 目录为每个模型提供独立脚本，例如：
+- `omni_anomaly_smd.sh`
+- `transformer_smd.sh`
 
 ## Git 工作流
 

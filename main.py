@@ -11,11 +11,11 @@ from typing import Any, Dict
 import torch
 
 from dataset import get_device
-from trainers.omni_trainer import OmniAnomalyTrainer, TrainingConfig
+from trainers import PipelineTrainer, ExperimentConfig
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="OmniAnomaly 通用训练入口")
+    parser = argparse.ArgumentParser(description="多模型异常检测统一入口")
 
     parser.add_argument("--model", type=str, default="OmniAnomaly", help="模型名称")
     parser.add_argument("--dataset", type=str, default="machine-1-1", help="SMD 子集")
@@ -54,7 +54,7 @@ def main() -> None:
     device = get_device(args.device)
     extra_params = json.loads(args.extra_params) if args.extra_params else {}
 
-    config = TrainingConfig(
+    config = ExperimentConfig(
         machine_id=args.dataset,
         window_length=args.window_length,
         d_model=args.d_model,
@@ -83,7 +83,7 @@ def main() -> None:
         dropout=args.dropout,
     )
 
-    trainer = OmniAnomalyTrainer(config)
+    trainer = PipelineTrainer(config)
     if args.mode == "train":
         metrics = trainer.train()
     else:
