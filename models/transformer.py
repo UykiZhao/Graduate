@@ -53,7 +53,7 @@ class TransformerModel(nn.Module):
             "encoded": encoded,
         }
 
-    def loss_function(self, x: torch.Tensor, outputs: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def loss_function(self, x: torch.Tensor, outputs: dict[str, torch.Tensor], **kwargs) -> dict[str, torch.Tensor]:
         recon = outputs["recon"]
         recon_loss = torch.mean(torch.sum((recon - x[:, -1, :]) ** 2, dim=-1))
         zero = torch.tensor(0.0, device=x.device)

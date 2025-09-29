@@ -314,6 +314,9 @@ class PipelineTrainer:
             "checkpoint_path": str(self.checkpoint_path),
             "best_epoch": self.best_epoch,
         })
+        for key, value in list(config_dict.items()):
+            if isinstance(value, Path):
+                config_dict[key] = str(value)
 
         with (self.run_result_dir / "config.json").open("w", encoding="utf-8") as f:
             json.dump(config_dict, f, ensure_ascii=False, indent=2)
