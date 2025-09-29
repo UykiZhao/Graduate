@@ -209,11 +209,11 @@ class PipelineTrainer:
             recon_errors, test_labels, num_steps=2000
         )
         raw_preds = (recon_errors >= threshold).astype(int)
-        adjusted_preds = adjust_predictions(test_labels, raw_preds)
 
-        tp = np.sum((adjusted_preds == 1) & (test_labels == 1))
-        fp = np.sum((adjusted_preds == 1) & (test_labels == 0))
-        fn = np.sum((adjusted_preds == 0) & (test_labels == 1))
+        # 使用原始预测计算真实指标
+        tp = np.sum((raw_preds == 1) & (test_labels == 1))
+        fp = np.sum((raw_preds == 1) & (test_labels == 0))
+        fn = np.sum((raw_preds == 0) & (test_labels == 1))
 
         precision = tp / (tp + fp + 1e-8)
         recall = tp / (tp + fn + 1e-8)
@@ -234,7 +234,7 @@ class PipelineTrainer:
             with log_path.open("w", encoding="utf-8") as f:
                 json.dump(metrics, f, ensure_ascii=False, indent=2)
 
-            np.save(self.run_result_dir / "predictions.npy", adjusted_preds)
+            np.save(self.run_result_dir / "predictions.npy", raw_preds)
             np.save(self.run_result_dir / "scores.npy", recon_errors)
 
         return metrics
