@@ -198,9 +198,12 @@ class PipelineTrainer:
             for batch_x, _ in tqdm(self.test_loader, desc="Testing", disable=not save_outputs):
                 batch_x = batch_x.to(self.device)
                 outputs = self.model(batch_x)
-                recon = outputs["recon"]
-                error = torch.mean((recon - batch_x[:, -1, :]) ** 2, dim=-1)
-                recon_errors.extend(error.cpu().numpy())
+                if hasattr(self.model, "compute_anomaly_score"):
+                    error = self.model.compute_anomaly_score(batch_x, outputs)
+                else:
+                    recon = outputs["recon"]
+                    error = torch.mean((recon - batch_x[:, -1, :]) ** 2, dim=-1)
+                recon_errors.extend(error.detach().cpu().numpy())
 
         recon_errors = np.array(recon_errors)
         test_labels = self.test_labels[-len(recon_errors) :]
