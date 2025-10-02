@@ -30,6 +30,7 @@ class TransformerModel(nn.Module):
 
         self.embedding = DataEmbedding(input_c, d_model, dropout=dropout)
         self.pre_norm = nn.LayerNorm(d_model)
+        self.input_noise_std = 0.05
 
         attn_layers = [
             EncoderLayer(
@@ -61,15 +62,20 @@ class TransformerModel(nn.Module):
             nn.Linear(d_ff, input_c),
         )
 
-        self.loss_fn = nn.SmoothL1Loss(reduction="none")
+        self.loss_fn = nn.SmoothL1Loss(reduction="mean")
         self.smoothness_weight = 1e-2
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        emb = self.embedding(x)
+        if self.training and self.input_noise_std > 0:
+            noise = torch.randn_like(x) * self.input_noise_std
+            x_noisy = x + noise
+        else:
+            x_noisy = x
+
+        emb = self.embedding(x_noisy)
         normed = self.pre_norm(emb)
         enc_out, _ = self.encoder(normed)
-        recon_delta = self.reconstructor(enc_out)
-        recon = recon_delta + x  # residual reconstruction to ease optimisation
+        recon = self.reconstructor(enc_out)
         return {
             "recon": recon,
             "encoded": enc_out,
@@ -77,7 +83,7 @@ class TransformerModel(nn.Module):
 
     def loss_function(self, x: torch.Tensor, outputs: dict[str, torch.Tensor], **kwargs) -> dict[str, torch.Tensor]:
         recon = outputs["recon"]
-        recon_loss = self.loss_fn(recon, x).mean()
+        recon_loss = self.loss_fn(recon, x)
 
         encoded = outputs["encoded"]
         temporal_diff = encoded[:, 1:, :] - encoded[:, :-1, :]
