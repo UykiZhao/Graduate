@@ -11,7 +11,7 @@
 主要特性：
 - TensorFlow 版本全面迁移至最新 PyTorch
 - 统一的入口 `main.py` 与 `dataset.py`
-- 训练过程实时可视化（tqdm）以及量化阈值、区间修正和最佳 F1 的多视角评估
+- 训练过程实时可视化（tqdm）以及自适应阈值、区间修正和最佳 F1 的多视角评估
 - 按运行编号归档的 `checkpoints/`、`results/` 与 `logs/`
 - CUDA、MPS、CPU 多硬件兼容
 
@@ -53,6 +53,8 @@ python main.py \
   --learning_rate 5e-4 \
   --max_epoch 25 \
   --anomaly_ratio 0.2 \
+  --threshold_alpha 0.05 \
+  --threshold_k 3.0 \
   --normalize
 ```
 
@@ -88,7 +90,7 @@ python main.py --mode test --pretrained_run 20250101-120000 --dataset machine-1-
 ```
 
 可额外指定 `--pretrained_epoch 10` 加载特定 epoch。指标说明：
-- `precision` / `recall` / `f1`：基于量化阈值并经过区间修正后的最终指标，适合作为部署基准。
+- `precision` / `recall` / `f1`：基于 EMA 自适应阈值并经过区间修正后的最终指标，适合作为部署基准。
 - `point_precision` / `point_recall` / `point_f1`：未做区间修正的逐点指标，可快速判断阈值是否偏离。
 - `best_*`：结合标注进行网格搜索得到的上界，仅用于诊断模型潜力或对齐文献结果。
 
@@ -113,7 +115,7 @@ python main.py --mode test --pretrained_run 20250101-120000 --dataset machine-1-
 This repository refactors **OmniAnomaly** for the SMD dataset using PyTorch, now defaulting to a Transformer reconstruction backbone, featuring:
 - Full migration from TensorFlow to PyTorch
 - Unified entry via `main.py` and `dataset.py`
-- Real-time training visualization with tqdm and layered evaluation (quantile, window-adjusted, best-by-search)
+- Real-time training visualization with tqdm and layered evaluation (EMA adaptive threshold, window-adjusted, best-by-search)
 - Run-based archives in `checkpoints/`, `results/`, and `logs/`
 - Multi-backend support: CUDA, MPS, CPU
 
@@ -147,6 +149,8 @@ python main.py \
   --learning_rate 5e-4 \
   --max_epoch 25 \
   --anomaly_ratio 0.2 \
+  --threshold_alpha 0.05 \
+  --threshold_k 3.0 \
   --normalize
 ```
 
@@ -160,7 +164,7 @@ python main.py --mode test --pretrained_run 20250101-120000 --dataset machine-1-
 
 Use `--pretrained_epoch` to load a specific epoch. Metrics now report:
 
-- `precision` / `recall` / `f1`: quantile-threshold predictions with segment adjustment (deployment ready).
+- `precision` / `recall` / `f1`: EMA-adaptive thresholds with segment adjustment (deployment ready).
 - `point_precision` / `point_recall` / `point_f1`: raw per-point detection without adjustment for quick diagnosis.
 - `best_*`: upper-bound metrics via grid search for diagnostics only.
 
@@ -175,4 +179,3 @@ Use `--pretrained_epoch` to load a specific epoch. Metrics now report:
 - Maintain `dev` as the active development branch, `main` as release branch
 - The GPU server pulls `dev` for training and reports back
 - Merge into `main` only after stability verification
-

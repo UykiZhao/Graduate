@@ -32,6 +32,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--beta_kl", type=float, default=1.0)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--anomaly_ratio", type=float, default=0.2)
+    parser.add_argument("--threshold_alpha", type=float, default=0.05)
+    parser.add_argument("--threshold_k", type=float, default=3.0)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--normalize", action="store_true")
     parser.add_argument("--mode", type=str, choices=["train", "test"], default="train")
@@ -66,6 +68,8 @@ def main() -> None:
         beta_kl=args.beta_kl,
         device=str(device),
         anomaly_ratio=args.anomaly_ratio,
+        threshold_alpha=args.threshold_alpha,
+        threshold_k=args.threshold_k,
         stride=args.stride,
         normalize=args.normalize,
         result_root=project_root / args.results_dir,

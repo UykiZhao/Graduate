@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 
 from dataset import SMDDataset, SMDWindowConfig, load_smd_labels
 from models import OmniAnomalyModel, TransformerModel
-from utils import search_best_f1, adjust_predictions
+from utils import search_best_f1, adjust_predictions, EMAAdaptiveThreshold
 
 
 @dataclass
@@ -51,6 +51,8 @@ class ExperimentConfig:
     n_heads: int = 4
     num_layers: int = 2
     dropout: float = 0.1
+    threshold_alpha: float = 0.05
+    threshold_k: float = 3.0
 
 
 class PipelineTrainer:
@@ -87,6 +89,11 @@ class PipelineTrainer:
         )
         self.last_diagnostics: Optional[Dict[str, float]] = None
         self.best_diagnostics: Optional[Dict[str, float]] = None
+        self.threshold_calibrator = EMAAdaptiveThreshold(
+            alpha=config.threshold_alpha,
+            k_sigma=config.threshold_k,
+        )
+        self.calibrator_dirty: bool = True
 
         self.train_loader = DataLoader(
             self.train_dataset,
@@ -138,6 +145,7 @@ class PipelineTrainer:
             epoch_kl = 0.0
             epoch_recon = 0.0
             self.model.train()
+            self.calibrator_dirty = True
 
             progress = tqdm(self.train_loader, desc=f"Epoch {epoch}/{self.config.max_epoch}")
             for batch_x, _ in progress:
@@ -194,6 +202,7 @@ class PipelineTrainer:
             self.best_diagnostics = self.last_diagnostics
         else:
             self.model.load_state_dict(self.best_state)
+            self.calibrator_dirty = True
             final_metrics = self.evaluate(save_outputs=True)
         final_diagnostics = self.last_diagnostics
 
@@ -233,16 +242,14 @@ class PipelineTrainer:
         recon_errors = np.array(recon_errors)
         test_labels = self.test_labels[-len(recon_errors) :]
 
-        ratio = float(np.clip(self.config.anomaly_ratio, 1e-4, 0.99))
-        quantile_threshold = float(np.quantile(recon_errors, 1 - ratio))
-        quantile_threshold = max(quantile_threshold, float(np.min(recon_errors)))
+        thresholds = self._get_adaptive_thresholds(recon_errors)
 
-        quantile_preds = (recon_errors >= quantile_threshold).astype(int)
-        point_precision, point_recall, point_f1 = self._score_predictions(test_labels, quantile_preds)
+        raw_preds = (recon_errors >= thresholds).astype(int)
+        point_precision, point_recall, point_f1 = self._score_predictions(test_labels, raw_preds)
 
         adjusted_preds = adjust_predictions(
             test_labels,
-            quantile_preds,
+            raw_preds,
             extend=max(1, self.config.window_length // 4),
         )
         adj_precision, adj_recall, adj_f1 = self._score_predictions(test_labels, adjusted_preds)
@@ -254,7 +261,9 @@ class PipelineTrainer:
         )
 
         diagnostics = {
-            "threshold": float(quantile_threshold),
+            "adaptive_threshold_mean": float(thresholds.mean()),
+            "adaptive_threshold_std": float(thresholds.std()),
+            "adaptive_threshold_last": float(thresholds[-1]),
             "point_precision": float(point_precision),
             "point_recall": float(point_recall),
             "point_f1": float(point_f1),
@@ -340,6 +349,35 @@ class PipelineTrainer:
         recall = tp / (tp + fn + 1e-8)
         f1 = 2 * precision * recall / (precision + recall + 1e-8)
         return float(precision), float(recall), float(f1)
+
+    def _get_adaptive_thresholds(self, scores: np.ndarray) -> np.ndarray:
+        if self.calibrator_dirty or not self.threshold_calibrator.is_fitted:
+            self._fit_threshold_calibrator()
+            self.calibrator_dirty = False
+        return self.threshold_calibrator.compute(scores, reset=True)
+
+    def _fit_threshold_calibrator(self) -> None:
+        calibration_scores = self._collect_loader_scores(self.train_loader)
+        self.threshold_calibrator.fit(calibration_scores)
+
+    def _collect_loader_scores(self, loader: DataLoader) -> np.ndarray:
+        collected: List[np.ndarray] = []
+        self.model.eval()
+        with torch.no_grad():
+            for batch_x, _ in loader:
+                batch_x = batch_x.to(self.device)
+                outputs = self.model(batch_x)
+                if hasattr(self.model, "compute_anomaly_score"):
+                    batch_scores = self.model.compute_anomaly_score(batch_x, outputs)
+                else:
+                    recon = outputs["recon"]
+                    batch_scores = torch.mean((recon - batch_x[:, -1, :]) ** 2, dim=-1)
+                collected.append(batch_scores.detach().cpu().numpy())
+
+        if not collected:
+            raise RuntimeError("No scores collected from loader for calibration")
+
+        return np.concatenate(collected, axis=0)
 
     def _save_best_checkpoint(self) -> None:
         torch.save(self.model.state_dict(), self.checkpoint_path)
