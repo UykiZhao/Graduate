@@ -85,6 +85,8 @@ class PipelineTrainer:
             self.optimizer,
             **scheduler_kwargs,
         )
+        self.last_diagnostics: Optional[Dict[str, float]] = None
+        self.best_diagnostics: Optional[Dict[str, float]] = None
 
         self.train_loader = DataLoader(
             self.train_dataset,
@@ -171,6 +173,8 @@ class PipelineTrainer:
                 "train_kl": avg_kl,
                 "train_recon": avg_recon,
             })
+            if self.last_diagnostics is not None:
+                metrics["diagnostics"] = self.last_diagnostics
             summary["epoch_metrics"].append(metrics)
 
             if self.scheduler is not None:
@@ -180,22 +184,27 @@ class PipelineTrainer:
                 best_f1 = metrics["f1"]
                 self.best_state = copy.deepcopy(self.model.state_dict())
                 self.best_metrics = metrics
+                self.best_diagnostics = self.last_diagnostics
                 self.best_epoch = epoch
 
         if self.best_state is None:
             self.best_state = copy.deepcopy(self.model.state_dict())
             final_metrics = self.evaluate(save_outputs=False)
             self.best_metrics = final_metrics
+            self.best_diagnostics = self.last_diagnostics
         else:
             self.model.load_state_dict(self.best_state)
             final_metrics = self.evaluate(save_outputs=True)
+        final_diagnostics = self.last_diagnostics
 
         self._save_best_checkpoint()
 
         summary.update({
             "best_epoch": self.best_epoch,
             "best_metrics": self.best_metrics,
+            "best_diagnostics": self.best_diagnostics,
             "final_metrics": final_metrics,
+            "final_diagnostics": final_diagnostics,
             "checkpoint_path": str(self.checkpoint_path),
         })
 
@@ -244,11 +253,8 @@ class PipelineTrainer:
             num_steps=2000,
         )
 
-        metrics = {
-            "threshold": quantile_threshold,
-            "precision": float(adj_precision),
-            "recall": float(adj_recall),
-            "f1": float(adj_f1),
+        diagnostics = {
+            "threshold": float(quantile_threshold),
             "point_precision": float(point_precision),
             "point_recall": float(point_recall),
             "point_f1": float(point_f1),
@@ -258,10 +264,22 @@ class PipelineTrainer:
             "best_f1": float(best_f1),
         }
 
+        metrics = {
+            "precision": float(adj_precision),
+            "recall": float(adj_recall),
+            "f1": float(adj_f1),
+        }
+
+        self.last_diagnostics = diagnostics
+
         if save_outputs:
             log_path = self.log_root / f"{self.run_id}_metrics.json"
+            payload = {
+                **metrics,
+                **diagnostics,
+            }
             with log_path.open("w", encoding="utf-8") as f:
-                json.dump(metrics, f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
 
             np.save(self.run_result_dir / "predictions.npy", adjusted_preds)
             np.save(self.run_result_dir / "scores.npy", recon_errors)

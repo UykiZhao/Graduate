@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_epoch", type=int, default=20)
     parser.add_argument("--beta_kl", type=float, default=1.0)
     parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--anomaly_ratio", type=float, default=0.5)
+    parser.add_argument("--anomaly_ratio", type=float, default=0.2)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--normalize", action="store_true")
     parser.add_argument("--mode", type=str, choices=["train", "test"], default="train")
@@ -94,4 +94,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

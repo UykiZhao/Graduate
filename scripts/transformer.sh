@@ -16,6 +16,6 @@ python main.py \
   --batch_size 256 \
   --learning_rate 5e-4 \
   --max_epoch 25 \
-  --anomaly_ratio 0.4 \
+  --anomaly_ratio 0.2 \
   --normalize \
   --stride 1
