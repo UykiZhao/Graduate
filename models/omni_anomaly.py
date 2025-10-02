@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from layers import GRUEncoder, GaussianDiagonal, ReparameterizedNormal
 
@@ -38,12 +39,21 @@ class OmniAnomalyModel(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, d_ff),
             nn.ReLU(),
-            nn.Linear(d_ff, input_c),
+            nn.Linear(d_ff, window_length * input_c),
         )
 
+        self.input_noise_std = 0.05
+
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-        batch, window, _ = x.shape
-        encoder_out = self.encoder(x)
+        batch, _, _ = x.shape
+
+        if self.training and self.input_noise_std > 0:
+            noise = torch.randn_like(x) * self.input_noise_std
+            x_noisy = x + noise
+        else:
+            x_noisy = x
+
+        encoder_out = self.encoder(x_noisy)
         hidden = encoder_out[:, -1, :]
         hidden = self.fc_hidden_act(self.fc_hidden(hidden))
 
@@ -51,6 +61,7 @@ class OmniAnomalyModel(nn.Module):
         posterior_mean, posterior_logvar = self.posterior(encoder_out[:, -1, :])
         z = self.reparameterize(posterior_mean, posterior_logvar)
         recon = self.decoder(z)
+        recon = recon.view(batch, self.window_length, self.input_c)
 
         return {
             "recon": recon,
@@ -75,7 +86,7 @@ class OmniAnomalyModel(nn.Module):
 
     def loss_function(self, x: torch.Tensor, outputs: Dict[str, torch.Tensor], beta: float = 1.0) -> Dict[str, torch.Tensor]:
         recon = outputs["recon"]
-        recon_loss = torch.mean(torch.sum((recon - x[:, -1, :]) ** 2, dim=-1))
+        recon_loss = F.mse_loss(recon, x, reduction="mean")
         kl = torch.mean(
             self.kl_divergence(
                 outputs["posterior_mean"],
@@ -87,4 +98,8 @@ class OmniAnomalyModel(nn.Module):
         total_loss = recon_loss + beta * kl
         return {"loss": total_loss, "recon_loss": recon_loss, "kl_loss": kl}
 
+    def compute_anomaly_score(self, x: torch.Tensor, outputs: Dict[str, torch.Tensor]) -> torch.Tensor:
+        recon = outputs["recon"]
+        error = F.mse_loss(recon[:, -1, :], x[:, -1, :], reduction="none")
+        return error.mean(dim=-1)
 
