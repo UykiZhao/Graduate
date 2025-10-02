@@ -72,6 +72,13 @@ class PipelineTrainer:
 
         self.model = self._build_model()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode="max",
+            factor=0.5,
+            patience=3,
+            verbose=False,
+        )
 
         self.train_loader = DataLoader(
             self.train_dataset,
@@ -160,6 +167,9 @@ class PipelineTrainer:
             })
             summary["epoch_metrics"].append(metrics)
 
+            if self.scheduler is not None:
+                self.scheduler.step(metrics["f1"])
+
             if metrics["f1"] > best_f1:
                 best_f1 = metrics["f1"]
                 self.best_state = copy.deepcopy(self.model.state_dict())
@@ -208,28 +218,38 @@ class PipelineTrainer:
         recon_errors = np.array(recon_errors)
         test_labels = self.test_labels[-len(recon_errors) :]
 
-        best_f1, best_precision, best_recall, threshold = search_best_f1(
-            recon_errors, test_labels, num_steps=2000
+        ratio = float(np.clip(self.config.anomaly_ratio, 1e-4, 0.99))
+        quantile_threshold = float(np.quantile(recon_errors, 1 - ratio))
+        quantile_threshold = max(quantile_threshold, float(np.min(recon_errors)))
+
+        quantile_preds = (recon_errors >= quantile_threshold).astype(int)
+        point_precision, point_recall, point_f1 = self._score_predictions(test_labels, quantile_preds)
+
+        adjusted_preds = adjust_predictions(
+            test_labels,
+            quantile_preds,
+            extend=max(1, self.config.window_length // 4),
         )
-        raw_preds = (recon_errors >= threshold).astype(int)
+        adj_precision, adj_recall, adj_f1 = self._score_predictions(test_labels, adjusted_preds)
 
-        # 使用原始预测计算真实指标
-        tp = np.sum((raw_preds == 1) & (test_labels == 1))
-        fp = np.sum((raw_preds == 1) & (test_labels == 0))
-        fn = np.sum((raw_preds == 0) & (test_labels == 1))
-
-        precision = tp / (tp + fp + 1e-8)
-        recall = tp / (tp + fn + 1e-8)
-        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        best_f1, best_precision, best_recall, best_threshold = search_best_f1(
+            recon_errors,
+            test_labels,
+            num_steps=2000,
+        )
 
         metrics = {
-            "precision": float(precision),
-            "recall": float(recall),
-            "f1": float(f1),
-            "threshold": float(threshold),
-            "best_f1": float(best_f1),
+            "threshold": quantile_threshold,
+            "precision": float(adj_precision),
+            "recall": float(adj_recall),
+            "f1": float(adj_f1),
+            "point_precision": float(point_precision),
+            "point_recall": float(point_recall),
+            "point_f1": float(point_f1),
+            "best_threshold": float(best_threshold),
             "best_precision": float(best_precision),
             "best_recall": float(best_recall),
+            "best_f1": float(best_f1),
         }
 
         if save_outputs:
@@ -237,7 +257,7 @@ class PipelineTrainer:
             with log_path.open("w", encoding="utf-8") as f:
                 json.dump(metrics, f, ensure_ascii=False, indent=2)
 
-            np.save(self.run_result_dir / "predictions.npy", raw_preds)
+            np.save(self.run_result_dir / "predictions.npy", adjusted_preds)
             np.save(self.run_result_dir / "scores.npy", recon_errors)
 
         return metrics
@@ -286,6 +306,17 @@ class PipelineTrainer:
             "kl_loss": torch.tensor(0.0, device=batch_x.device),
         }
 
+    @staticmethod
+    def _score_predictions(labels: np.ndarray, preds: np.ndarray) -> tuple[float, float, float]:
+        tp = np.sum((preds == 1) & (labels == 1))
+        fp = np.sum((preds == 1) & (labels == 0))
+        fn = np.sum((preds == 0) & (labels == 1))
+
+        precision = tp / (tp + fp + 1e-8)
+        recall = tp / (tp + fn + 1e-8)
+        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        return float(precision), float(recall), float(f1)
+
     def _save_best_checkpoint(self) -> None:
         torch.save(self.model.state_dict(), self.checkpoint_path)
 
@@ -323,4 +354,3 @@ class PipelineTrainer:
 
         with (self.run_result_dir / "config.json").open("w", encoding="utf-8") as f:
             json.dump(config_dict, f, ensure_ascii=False, indent=2)
-

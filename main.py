@@ -17,7 +17,7 @@ from trainers import PipelineTrainer, ExperimentConfig
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="多模型异常检测统一入口")
 
-    parser.add_argument("--model", type=str, default="OmniAnomaly", help="模型名称")
+    parser.add_argument("--model", type=str, default="Transformer", help="模型名称")
     parser.add_argument("--dataset", type=str, default="machine-1-1", help="SMD 子集")
     parser.add_argument("--window_length", type=int, default=100)
     parser.add_argument("--d_model", type=int, default=128)
@@ -94,5 +94,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 

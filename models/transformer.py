@@ -29,6 +29,7 @@ class TransformerModel(nn.Module):
         self.window_length = window_length
 
         self.embedding = DataEmbedding(input_c, d_model, dropout=dropout)
+        self.pre_norm = nn.LayerNorm(d_model)
 
         attn_layers = [
             EncoderLayer(
@@ -53,16 +54,22 @@ class TransformerModel(nn.Module):
         self.encoder = Encoder(attn_layers, norm_layer=nn.LayerNorm(d_model))
 
         self.reconstructor = nn.Sequential(
+            nn.LayerNorm(d_model),
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, input_c),
         )
 
+        self.loss_fn = nn.SmoothL1Loss(reduction="none")
+        self.smoothness_weight = 1e-2
+
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         emb = self.embedding(x)
-        enc_out, _ = self.encoder(emb)
-        recon = self.reconstructor(enc_out)
+        normed = self.pre_norm(emb)
+        enc_out, _ = self.encoder(normed)
+        recon_delta = self.reconstructor(enc_out)
+        recon = recon_delta + x  # residual reconstruction to ease optimisation
         return {
             "recon": recon,
             "encoded": enc_out,
@@ -70,15 +77,25 @@ class TransformerModel(nn.Module):
 
     def loss_function(self, x: torch.Tensor, outputs: dict[str, torch.Tensor], **kwargs) -> dict[str, torch.Tensor]:
         recon = outputs["recon"]
-        recon_loss = torch.mean(torch.sum((recon - x) ** 2, dim=-1))
+        recon_loss = self.loss_fn(recon, x).mean()
+
+        encoded = outputs["encoded"]
+        temporal_diff = encoded[:, 1:, :] - encoded[:, :-1, :]
+        smooth_loss = temporal_diff.pow(2).mean()
+
+        total_loss = recon_loss + self.smoothness_weight * smooth_loss
         return {
-            "loss": recon_loss,
+            "loss": total_loss,
             "recon_loss": recon_loss,
+            "smooth_loss": smooth_loss,
             "kl_loss": torch.zeros(1, device=x.device),
         }
 
     def compute_anomaly_score(self, x: torch.Tensor, outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         recon = outputs["recon"]
-        score = torch.mean((recon - x) ** 2, dim=-1)
-        return score[:, -1]
+        encoded = outputs["encoded"]
 
+        recon_error = torch.mean((recon - x) ** 2, dim=-1)
+        latent_energy = torch.mean(encoded.pow(2), dim=-1)
+        score = 0.7 * recon_error + 0.3 * latent_energy
+        return score[:, -1]
