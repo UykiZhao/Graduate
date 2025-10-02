@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import json
 import time
+import inspect
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -72,12 +73,17 @@ class PipelineTrainer:
 
         self.model = self._build_model()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
+        scheduler_kwargs = {
+            "mode": "max",
+            "factor": 0.5,
+            "patience": 3,
+        }
+        scheduler_sig = inspect.signature(torch.optim.lr_scheduler.ReduceLROnPlateau.__init__)
+        if "verbose" in scheduler_sig.parameters:
+            scheduler_kwargs["verbose"] = False
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer,
-            mode="max",
-            factor=0.5,
-            patience=3,
-            verbose=False,
+            **scheduler_kwargs,
         )
 
         self.train_loader = DataLoader(
