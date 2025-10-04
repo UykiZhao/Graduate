@@ -12,9 +12,9 @@ venv/
 
 # Data & artifacts
 data/processed/
-checkpoints/
-results/
-logs/
+#checkpoints/
+#results/
+#logs/
 
 # OS files
 .DS_Store
