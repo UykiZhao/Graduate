@@ -53,6 +53,7 @@ class ExperimentConfig:
     dropout: float = 0.1
     threshold_alpha: float = 0.05
     threshold_k: float = 3.0
+    init_checkpoint: Optional[Path] = None
 
 
 class PipelineTrainer:
@@ -74,6 +75,12 @@ class PipelineTrainer:
         self.test_labels = load_smd_labels(config.machine_id)
 
         self.model = self._build_model()
+        if config.init_checkpoint is not None:
+            init_path = config.init_checkpoint
+            if not init_path.exists():
+                raise FileNotFoundError(f"未找到初始权重: {init_path}")
+            state_dict = torch.load(init_path, map_location=self.device)
+            self.model.load_state_dict(state_dict)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         scheduler_kwargs = {
             "mode": "max",
@@ -417,6 +424,9 @@ class PipelineTrainer:
             "n_heads": self.config.n_heads,
             "num_layers": self.config.num_layers,
             "dropout": self.config.dropout,
+            "init_checkpoint": str(self.config.init_checkpoint)
+            if self.config.init_checkpoint is not None
+            else None,
         }
         params.update(self.config.extra_params)
         return params
