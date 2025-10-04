@@ -45,6 +45,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--checkpoints_dir", type=str, default="checkpoints")
     parser.add_argument("--logs_dir", type=str, default="logs")
+    parser.add_argument(
+        "--init_checkpoint",
+        type=str,
+        default=None,
+        help="预训练权重路径，用于继续训练",
+    )
 
     return parser.parse_args()
 
@@ -55,6 +61,12 @@ def main() -> None:
 
     device = get_device(args.device)
     extra_params = json.loads(args.extra_params) if args.extra_params else {}
+
+    init_checkpoint = None
+    if args.init_checkpoint:
+        init_checkpoint = Path(args.init_checkpoint)
+        if not init_checkpoint.is_absolute():
+            init_checkpoint = (project_root / init_checkpoint).resolve()
 
     config = ExperimentConfig(
         machine_id=args.dataset,
@@ -85,6 +97,7 @@ def main() -> None:
         n_heads=args.n_heads,
         num_layers=args.num_layers,
         dropout=args.dropout,
+        init_checkpoint=init_checkpoint,
     )
 
     trainer = PipelineTrainer(config)
