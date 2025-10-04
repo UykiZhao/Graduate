@@ -108,8 +108,8 @@ class PipelineTrainer:
             drop_last=False,
         )
 
-        self.result_root = config.result_root / config.machine_id / config.model_name
-        self.log_root = config.log_root / config.machine_id / config.model_name
+        self.result_root = config.result_root / config.model_name
+        self.log_root = config.log_root / config.model_name
         self.checkpoint_root = config.checkpoint_root
 
         self.result_root.mkdir(parents=True, exist_ok=True)
@@ -122,6 +122,10 @@ class PipelineTrainer:
             if not config.pretrained_run:
                 raise ValueError("测试模式必须提供 pretrained_run")
             self.run_id = config.pretrained_run
+
+        self.summary_path = self.result_root / "summary.txt"
+        self.metrics_log_path = self.log_root / "metrics.txt"
+        self.session_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
         self.run_result_dir = self.result_root / self.run_id
         self.run_result_dir.mkdir(parents=True, exist_ok=True)
@@ -217,8 +221,16 @@ class PipelineTrainer:
             "checkpoint_path": str(self.checkpoint_path),
         })
 
-        with (self.run_result_dir / "summary.json").open("w", encoding="utf-8") as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
+        summary_json = json.dumps(summary, ensure_ascii=False, indent=2)
+        formatted_summary = "\n".join(f"  {line}" for line in summary_json.splitlines())
+        summary_lines = [
+            f"run_id: {self.run_id}",
+            f"machine_id: {self.config.machine_id}",
+            f"timestamp: {self.session_timestamp}",
+            "summary:",
+            formatted_summary,
+        ]
+        self._append_session_block(self.summary_path, summary_lines)
 
         self._save_config_file()
 
@@ -282,13 +294,20 @@ class PipelineTrainer:
         self.last_diagnostics = diagnostics
 
         if save_outputs:
-            log_path = self.log_root / f"{self.run_id}_metrics.json"
             payload = {
                 **metrics,
                 **diagnostics,
             }
-            with log_path.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+            metrics_json = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+            formatted_metrics = "\n".join(f"  {line}" for line in metrics_json.splitlines())
+            log_lines = [
+                f"run_id: {self.run_id}",
+                f"machine_id: {self.config.machine_id}",
+                f"timestamp: {self.session_timestamp}",
+                "metrics:",
+                formatted_metrics,
+            ]
+            self._append_session_block(self.metrics_log_path, log_lines)
 
             np.save(self.run_result_dir / "predictions.npy", adjusted_preds)
             np.save(self.run_result_dir / "scores.npy", recon_errors)
@@ -401,6 +420,17 @@ class PipelineTrainer:
         }
         params.update(self.config.extra_params)
         return params
+
+    def _append_session_block(self, path: Path, lines: List[str]) -> None:
+        """Append a training session block to the given path."""
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        block = "\n".join(lines).rstrip() + "\n"
+        separator_needed = path.exists() and path.stat().st_size > 0
+        with path.open("a", encoding="utf-8") as f:
+            if separator_needed:
+                f.write("=\n")
+            f.write(block)
 
     def _save_config_file(self) -> None:
         config_dict = asdict(self.config)

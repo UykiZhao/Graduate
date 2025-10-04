@@ -106,8 +106,8 @@ class OmniAnomalyTrainer:
         )
 
         self.machine_checkpoint_root = config.checkpoint_root / config.machine_id
-        self.machine_result_root = config.result_root / config.machine_id
-        self.machine_log_root = config.log_root / config.machine_id
+        self.machine_result_root = config.result_root / config.model_name
+        self.machine_log_root = config.log_root / config.model_name
 
         self.machine_checkpoint_root.mkdir(parents=True, exist_ok=True)
         self.machine_result_root.mkdir(parents=True, exist_ok=True)
@@ -119,6 +119,10 @@ class OmniAnomalyTrainer:
             if not config.pretrained_run:
                 raise ValueError("测试模式必须提供 pretrained_run")
             self.run_id = config.pretrained_run
+
+        self.summary_path = self.machine_result_root / "summary.txt"
+        self.metrics_log_path = self.machine_log_root / "metrics.txt"
+        self.session_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
         self.run_checkpoint_dir = self.machine_checkpoint_root / self.run_id
         self.run_result_dir = self.machine_result_root / self.run_id
@@ -191,8 +195,16 @@ class OmniAnomalyTrainer:
         summary.update(metrics)
         summary["epoch_history"] = self.epoch_history
 
-        with (self.run_result_dir / "summary.json").open("w", encoding="utf-8") as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
+        summary_json = json.dumps(summary, ensure_ascii=False, indent=2)
+        formatted_summary = "\n".join(f"  {line}" for line in summary_json.splitlines())
+        summary_lines = [
+            f"run_id: {self.run_id}",
+            f"machine_id: {self.config.machine_id}",
+            f"timestamp: {self.session_timestamp}",
+            "summary:",
+            formatted_summary,
+        ]
+        self._append_session_block(self.summary_path, summary_lines)
 
         self._save_config_files()
 
@@ -237,9 +249,16 @@ class OmniAnomalyTrainer:
             "best_recall": float(best_recall),
         }
 
-        result_path = self.machine_log_root / f"{self.run_id}_metrics.json"
-        with result_path.open("w", encoding="utf-8") as f:
-            json.dump(metrics, f, ensure_ascii=False, indent=2)
+        metrics_json = json.dumps(metrics, ensure_ascii=False, indent=2, sort_keys=True)
+        formatted_metrics = "\n".join(f"  {line}" for line in metrics_json.splitlines())
+        log_lines = [
+            f"run_id: {self.run_id}",
+            f"machine_id: {self.config.machine_id}",
+            f"timestamp: {self.session_timestamp}",
+            "metrics:",
+            formatted_metrics,
+        ]
+        self._append_session_block(self.metrics_log_path, log_lines)
 
         pred_path = self.run_result_dir / "predictions.npy"
         np.save(pred_path, adjusted_preds)
@@ -299,6 +318,15 @@ class OmniAnomalyTrainer:
         }
         params.update(self.config.extra_params)
         return params
+
+    def _append_session_block(self, path: Path, lines: List[str]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        block = "\n".join(lines).rstrip() + "\n"
+        separator_needed = path.exists() and path.stat().st_size > 0
+        with path.open("a", encoding="utf-8") as f:
+            if separator_needed:
+                f.write("=\n")
+            f.write(block)
 
     def _save_config_files(self) -> None:
         config_dict = asdict(self.config)

@@ -76,9 +76,10 @@ python main.py \
   --normalize
 ```
 
-训练日志将显示在终端，并同时写入 `logs/<machine_id>/<模型名称>/<run_id>_metrics.json`。模型与指标存放于：
+训练日志将显示在终端，并同时追加到 `logs/<模型名称>/metrics.txt`（每次训练以单独的 `=` 行分隔）。模型与指标存放于：
 - `checkpoints/<模型名称>.pt`
-- `results/<machine_id>/<模型名称>/<run_id>/summary.json`
+- `results/<模型名称>/summary.txt`
+- `results/<模型名称>/<run_id>/`
 
 
 ## 测试/评估
@@ -154,7 +155,7 @@ python main.py \
   --normalize
 ```
 
-Results are saved under `results/<machine_id>/<run_id>/summary.json`, checkpoints under `checkpoints/<model_name>.pt`.
+Results are appended to `results/<model_name>/summary.txt` (each session separated by `=`), while checkpoints remain under `checkpoints/<model_name>.pt`.
 
 ### Evaluation
 

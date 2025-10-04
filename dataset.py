@@ -204,9 +204,14 @@ def summarize_run(
         "metrics": metrics,
     }
 
-    summary_path = output_dir / "summary.json"
+    summary_path = output_dir / "summary.txt"
+    summary_json = json.dumps(summary, ensure_ascii=False, indent=2)
+    separator_needed = summary_path.exists() and summary_path.stat().st_size > 0
 
-    with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+    with summary_path.open("a", encoding="utf-8") as f:
+        if separator_needed:
+            f.write("=\n")
+        f.write(summary_json)
+        f.write("\n")
 
 
